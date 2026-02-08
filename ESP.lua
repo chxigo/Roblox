@@ -1,8 +1,8 @@
---// ESP Module v3 — Bulletproof Enable/Disable
---// API: ESP:Enable() / ESP:Disable() เท่านั้น
+--// ESP Module v4 — Re-executable Safe
+--// รัน loadstring กี่ครั้งก็ได้ ไม่ค้าง ไม่ซ้อน
 
-local Players    = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Players     = game:GetService("Players")
+local RunService  = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local V2new  = Vector2.new
@@ -12,6 +12,14 @@ local C3rgb  = Color3.fromRGB
 local mfloor = math.floor
 local mabs   = math.abs
 local mclamp = math.clamp
+
+----------------------------------------------------------------
+-- ★ ล้างของเก่าจากการรันครั้งก่อนทันที
+----------------------------------------------------------------
+if _G.__ESP_CLEANUP then
+    pcall(_G.__ESP_CLEANUP)
+    _G.__ESP_CLEANUP = nil
+end
 
 ----------------------------------------------------------------
 -- Module
@@ -66,16 +74,19 @@ local MAX_BONES = #BonesR15
 ----------------------------------------------------------------
 -- Internal State
 ----------------------------------------------------------------
-local _active    = false
-local _genID     = 0        -- generation ID ป้องกัน stale callback
-local _pool      = {}       -- [Player] = object
-local _charConns = {}       -- [Player] = connection
-local _globalConns = {}     -- array ของ connection ทั้งหมด
-local _renderConn  = nil
+local _active      = false
+local _genID       = 0
+local _pool        = {}
+local _charConns   = {}
+local _globalConns = {}
 
 ----------------------------------------------------------------
--- Safe remove drawing
+-- Safe helpers
 ----------------------------------------------------------------
+local function safeDo(fn)
+    pcall(fn)
+end
+
 local function safeRemove(d)
     if not d then return end
     pcall(function() d.Visible = false end)
@@ -86,6 +97,11 @@ local function safeDestroy(inst)
     if not inst then return end
     pcall(function() inst.Enabled = false end)
     pcall(function() inst:Destroy() end)
+end
+
+local function safeDisconnect(c)
+    if not c then return end
+    pcall(function() c:Disconnect() end)
 end
 
 ----------------------------------------------------------------
@@ -125,6 +141,11 @@ end
 ----------------------------------------------------------------
 -- Per-player object
 ----------------------------------------------------------------
+local DRAW_KEYS = {
+    "BoxOutline","Box","Name","Distance",
+    "HealthBarBG","HealthBar","HealthText","Tracer"
+}
+
 local function createObject()
     local o = {
         BoxOutline  = mkSquare(),
@@ -144,11 +165,6 @@ local function createObject()
     end
     return o
 end
-
-local DRAW_KEYS = {
-    "BoxOutline","Box","Name","Distance",
-    "HealthBarBG","HealthBar","HealthText","Tracer"
-}
 
 local function hideObject(o)
     for i = 1, #DRAW_KEYS do
@@ -173,10 +189,8 @@ local function destroyObject(o)
         safeRemove(o.Bones[i])
         o.Bones[i] = nil
     end
-    if o.Chams then
-        safeDestroy(o.Chams)
-        o.Chams = nil
-    end
+    safeDestroy(o.Chams)
+    o.Chams = nil
     o.Parts = nil
 end
 
@@ -233,7 +247,7 @@ local function computeBB(cam, rootPos)
 end
 
 ----------------------------------------------------------------
--- Render Loop (ไม่ใช้ continue)
+-- Render
 ----------------------------------------------------------------
 local function renderFrame()
     if not _active then return end
@@ -268,10 +282,8 @@ local function renderFrame()
                     local dist    = (camPos - rootPos).Magnitude
                     if dist <= maxDist and computeBB(cam, rootPos) then
                         shouldDraw = true
-
                         local hpFrac = mclamp(hum.Health / hum.MaxHealth, 0, 1)
 
-                        -- BOX
                         if eBox then
                             local bo = obj.BoxOutline
                             bo.Position  = bb_tl - ONE_V2
@@ -279,7 +291,6 @@ local function renderFrame()
                             bo.Color     = BLACK
                             bo.Thickness = 3
                             bo.Visible   = true
-
                             local bx = obj.Box
                             bx.Position = bb_tl
                             bx.Size     = bb_sz
@@ -290,7 +301,6 @@ local function renderFrame()
                             obj.Box.Visible        = false
                         end
 
-                        -- NAME
                         if eName then
                             local n = obj.Name
                             n.Text     = player.DisplayName
@@ -303,7 +313,6 @@ local function renderFrame()
                             obj.Name.Visible = false
                         end
 
-                        -- DISTANCE
                         if eDist then
                             local d = obj.Distance
                             d.Text     = mfloor(dist) .. "m"
@@ -316,13 +325,11 @@ local function renderFrame()
                             obj.Distance.Visible = false
                         end
 
-                        -- HEALTH BAR
                         if eHP then
                             local barX = bb_tl.X - 5
                             local topY = bb_tl.Y
                             local botY = bb_tl.Y + bb_sz.Y
                             local fillY = botY - bb_sz.Y * hpFrac
-
                             local lo = ESP.HealthLowColor
                             local hi = ESP.HealthHighColor
                             local hpCol = C3new(
@@ -330,18 +337,15 @@ local function renderFrame()
                                 lo.G + (hi.G - lo.G) * hpFrac,
                                 lo.B + (hi.B - lo.B) * hpFrac
                             )
-
                             local bg = obj.HealthBarBG
                             bg.From    = V2new(barX, topY)
                             bg.To      = V2new(barX, botY)
                             bg.Visible = true
-
                             local bar = obj.HealthBar
                             bar.From    = V2new(barX, fillY)
                             bar.To      = V2new(barX, botY)
                             bar.Color   = hpCol
                             bar.Visible = true
-
                             local ht = obj.HealthText
                             if hpFrac < 1 then
                                 ht.Text     = tostring(mfloor(hum.Health))
@@ -357,7 +361,6 @@ local function renderFrame()
                             obj.HealthText.Visible  = false
                         end
 
-                        -- TRACER
                         if eTrace then
                             local t = obj.Tracer
                             t.From    = V2new(vpSize.X * 0.5, vpSize.Y)
@@ -368,7 +371,6 @@ local function renderFrame()
                             obj.Tracer.Visible = false
                         end
 
-                        -- SKELETON
                         if eSkel then
                             local bp    = parts.BoneParts
                             local bc    = parts.BoneCount
@@ -393,19 +395,14 @@ local function renderFrame()
                                 end
                             end
                             for i = bc + 1, MAX_BONES do
-                                if bones[i] then
-                                    bones[i].Visible = false
-                                end
+                                if bones[i] then bones[i].Visible = false end
                             end
                         else
                             for i = 1, MAX_BONES do
-                                if obj.Bones[i] then
-                                    obj.Bones[i].Visible = false
-                                end
+                                if obj.Bones[i] then obj.Bones[i].Visible = false end
                             end
                         end
 
-                        -- CHAMS
                         if eChams then
                             local ch = obj.Chams
                             if not ch or not ch.Parent then
@@ -413,11 +410,9 @@ local function renderFrame()
                                 ch.FillTransparency    = 0.5
                                 ch.OutlineTransparency = 0
                                 ch.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
-                                pcall(function()
-                                    ch.Parent = gethui()
-                                end)
-                                if not ch.Parent then
-                                    ch.Parent = game:GetService("CoreGui")
+                                local ok = pcall(function() ch.Parent = gethui() end)
+                                if not ok then
+                                    pcall(function() ch.Parent = game:GetService("CoreGui") end)
                                 end
                                 obj.Chams = ch
                             end
@@ -426,16 +421,13 @@ local function renderFrame()
                             ch.OutlineColor = ESP.ChamsOutlineColor
                             ch.Enabled      = true
                         else
-                            if obj.Chams then
-                                obj.Chams.Enabled = false
-                            end
+                            if obj.Chams then obj.Chams.Enabled = false end
                         end
                     end
                 end
             end
         end
 
-        -- ถ้าไม่ draw → ซ่อนทุกอย่าง
         if not shouldDraw then
             hideObject(obj)
         end
@@ -443,7 +435,7 @@ local function renderFrame()
 end
 
 ----------------------------------------------------------------
--- Bind / Unbind
+-- Bind player
 ----------------------------------------------------------------
 local function bindPlayer(player, gen)
     if player == LocalPlayer then return end
@@ -476,6 +468,40 @@ local function bindPlayer(player, gen)
 end
 
 ----------------------------------------------------------------
+-- ★ Core cleanup (ใช้ทั้ง Disable และ auto-cleanup ตอนรันใหม่)
+----------------------------------------------------------------
+local function fullCleanup()
+    _active = false
+    _genID  = _genID + 1
+
+    for i = 1, #_globalConns do
+        safeDisconnect(_globalConns[i])
+    end
+    _globalConns = {}
+
+    for p, c in next, _charConns do
+        safeDisconnect(c)
+    end
+    _charConns = {}
+
+    local list = {}
+    for p in next, _pool do
+        list[#list + 1] = p
+    end
+    for i = 1, #list do
+        local obj = _pool[list[i]]
+        if obj then destroyObject(obj) end
+        _pool[list[i]] = nil
+    end
+    _pool = {}
+end
+
+----------------------------------------------------------------
+-- ★ เก็บ cleanup ไว้ใน _G → รันใหม่จะเรียกได้
+----------------------------------------------------------------
+_G.__ESP_CLEANUP = fullCleanup
+
+----------------------------------------------------------------
 -- ENABLE
 ----------------------------------------------------------------
 function ESP:Enable()
@@ -485,9 +511,12 @@ function ESP:Enable()
     _genID  = _genID + 1
     local gen = _genID
 
-    _pool       = {}
-    _charConns  = {}
+    _pool        = {}
+    _charConns   = {}
     _globalConns = {}
+
+    -- ★ อัพเดท cleanup ให้ชี้ state ปัจจุบัน
+    _G.__ESP_CLEANUP = fullCleanup
 
     for _, p in ipairs(Players:GetPlayers()) do
         bindPlayer(p, gen)
@@ -502,67 +531,23 @@ function ESP:Enable()
 
     local remConn = Players.PlayerRemoving:Connect(function(p)
         if not _active or gen ~= _genID then return end
-        if _charConns[p] then
-            _charConns[p]:Disconnect()
-            _charConns[p] = nil
-        end
+        safeDisconnect(_charConns[p])
+        _charConns[p] = nil
         local obj = _pool[p]
-        if obj then
-            destroyObject(obj)
-            _pool[p] = nil
-        end
+        if obj then destroyObject(obj) end
+        _pool[p] = nil
     end)
     _globalConns[#_globalConns + 1] = remConn
 
-    _renderConn = RunService.RenderStepped:Connect(renderFrame)
-    _globalConns[#_globalConns + 1] = _renderConn
+    local renderConn = RunService.RenderStepped:Connect(renderFrame)
+    _globalConns[#_globalConns + 1] = renderConn
 end
 
 ----------------------------------------------------------------
--- DISABLE  (ลบทุกอย่างออกจากหน้าจอ)
+-- DISABLE
 ----------------------------------------------------------------
 function ESP:Disable()
-    if not _active then return end
-
-    -- 1) ปิด flag ทันที → renderFrame จะ return ทันที
-    _active = false
-    _genID  = _genID + 1
-
-    -- 2) ตัด render + global connections
-    for i = 1, #_globalConns do
-        local c = _globalConns[i]
-        if c then
-            pcall(function() c:Disconnect() end)
-        end
-    end
-    _globalConns = {}
-    _renderConn  = nil
-
-    -- 3) ตัด per-player connections
-    for p, c in next, _charConns do
-        if c then
-            pcall(function() c:Disconnect() end)
-        end
-    end
-    _charConns = {}
-
-    -- 4) เก็บ player list ก่อน (ไม่แก้ table ระหว่าง iterate)
-    local playerList = {}
-    for p in next, _pool do
-        playerList[#playerList + 1] = p
-    end
-
-    -- 5) ทำลาย Drawing ทุกชิ้นของทุกคน
-    for i = 1, #playerList do
-        local p   = playerList[i]
-        local obj = _pool[p]
-        if obj then
-            destroyObject(obj)
-        end
-        _pool[p] = nil
-    end
-
-    _pool = {}
+    fullCleanup()
 end
 
 return ESP
