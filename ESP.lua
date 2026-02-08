@@ -115,12 +115,19 @@ end
 
 local function destroyObj(o)
     for i = 1, #DRAW_KEYS do
-        o[DRAW_KEYS[i]]:Remove()
+        local d = o[DRAW_KEYS[i]]
+        d.Visible = false          -- ★ ซ่อนก่อน
+        d:Remove()
     end
     for i = 1, MAX_BONES do
+        o.Bones[i].Visible = false -- ★ ซ่อนก่อน
         o.Bones[i]:Remove()
     end
-    if o.Chams then o.Chams:Destroy(); o.Chams = nil end
+    if o.Chams then
+        o.Chams.Enabled = false    -- ★ ซ่อนก่อน
+        o.Chams:Destroy()
+        o.Chams = nil
+    end
 end
 
 -- Cache character parts เมื่อ spawn (ไม่ต้อง FindFirstChild ทุก frame)
@@ -403,11 +410,17 @@ end
 function ESP:Stop()
     if renderConn then renderConn:Disconnect(); renderConn = nil end
     for k, c in next, Conns do c:Disconnect(); Conns[k] = nil end
-    for p in next, Pool do unbindPlayer(p) end
+
+    -- ★ collect ก่อน iterate เพื่อไม่แก้ table ระหว่าง loop
+    local players = {}
+    for p in next, Pool do players[#players + 1] = p end
+    for _, p in ipairs(players) do
+        unbindPlayer(p)
+    end
 end
 
 function ESP:EnableAll()  for k in next, Enabled do Enabled[k] = true end end
-function ESP:DisableAll() for k in next, Enabled do Enabled[k] = false end end
+function ESP:DisableAll() for k in next, Enabled do Enabled[k] = false end for _, obj in next, Pool do hideObj(obj) end end
 function ESP:SetMaxDistance(d) ESP.MaxDistance = d end
 function ESP:SetTeamCheck(v) ESP.TeamCheck = v end
 
