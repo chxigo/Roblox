@@ -1,427 +1,540 @@
---// ESP Module (Optimized)
-
-local Players = game:GetService("Players")
+local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
---// Localize hot globals
-local V2new = Vector2.new
-local V3new = Vector3.new
-local C3new = Color3.new
-local C3rgb = Color3.fromRGB
+----------------------------------------------------------------
+-- Math / Constructor cache
+----------------------------------------------------------------
+local V2new  = Vector2.new
+local V3new  = Vector3.new
+local C3new  = Color3.new
+local C3rgb  = Color3.fromRGB
 local mfloor = math.floor
-local mabs = math.abs
+local mabs   = math.abs
 local mclamp = math.clamp
-local tostring = tostring
-local ipairs = ipairs
-local next = next
 
+----------------------------------------------------------------
+-- Module Table
+----------------------------------------------------------------
 local ESP = {}
 
---// Settings & Colors (direct access, no nesting overhead)
-ESP.TeamCheck = false
-ESP.MaxDistance = 2000
-ESP.Font = Drawing.Fonts.Plex
-ESP.FontSize = 13
+-- Feature toggles (set true/false ก่อนหรือหลัง Enable ก็ได้)
+ESP.Box       = false
+ESP.Name      = false
+ESP.HealthBar = false
+ESP.Distance  = false
+ESP.Tracer    = false
+ESP.Skeleton  = false
+ESP.Chams     = false
 
-local Enabled = { Box=false, Name=false, HealthBar=false, Distance=false, Tracer=false, Skeleton=false, Chams=false }
-local Colors = {
-    Box=C3rgb(255,255,255), Name=C3rgb(255,255,255), Distance=C3rgb(200,200,200),
-    Tracer=C3rgb(255,255,255), Skeleton=C3rgb(255,255,255),
-    HealthHigh=C3rgb(0,255,0), HealthLow=C3rgb(255,0,0),
-    ChamsFill=C3rgb(255,0,0), ChamsOutline=C3rgb(255,255,255),
-}
+-- Settings
+ESP.TeamCheck   = false
+ESP.MaxDistance  = 2000
+ESP.Font        = Drawing.Fonts.Plex
+ESP.FontSize    = 13
 
-local BLACK = C3new(0,0,0)
-local ONE_V2 = V2new(1,1)
-local TWO_V2 = V2new(2,2)
+-- Colors
+ESP.BoxColor        = C3rgb(255, 255, 255)
+ESP.NameColor       = C3rgb(255, 255, 255)
+ESP.DistanceColor   = C3rgb(200, 200, 200)
+ESP.TracerColor     = C3rgb(255, 255, 255)
+ESP.SkeletonColor   = C3rgb(255, 255, 255)
+ESP.HealthHighColor = C3rgb(0, 255, 0)
+ESP.HealthLowColor  = C3rgb(255, 0, 0)
+ESP.ChamsFillColor    = C3rgb(255, 0, 0)
+ESP.ChamsOutlineColor = C3rgb(255, 255, 255)
 
 ----------------------------------------------------------------
--- Skeleton Bone Maps (frozen)
+-- Constants
 ----------------------------------------------------------------
+local BLACK   = C3new(0, 0, 0)
+local ONE_V2  = V2new(1, 1)
+local TWO_V2  = V2new(2, 2)
+
 local BonesR15 = {
-    {"Head","UpperTorso"}, {"UpperTorso","LowerTorso"},
-    {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"}, {"LeftLowerArm","LeftHand"},
+    {"Head","UpperTorso"},
+    {"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},  {"LeftUpperArm","LeftLowerArm"},   {"LeftLowerArm","LeftHand"},
     {"UpperTorso","RightUpperArm"}, {"RightUpperArm","RightLowerArm"}, {"RightLowerArm","RightHand"},
-    {"LowerTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"}, {"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","LeftUpperLeg"},  {"LeftUpperLeg","LeftLowerLeg"},   {"LeftLowerLeg","LeftFoot"},
     {"LowerTorso","RightUpperLeg"}, {"RightUpperLeg","RightLowerLeg"}, {"RightLowerLeg","RightFoot"},
 }
+
 local BonesR6 = {
-    {"Head","Torso"}, {"Torso","Left Arm"}, {"Torso","Right Arm"},
-    {"Torso","Left Leg"}, {"Torso","Right Leg"},
+    {"Head","Torso"},
+    {"Torso","Left Arm"},  {"Torso","Right Arm"},
+    {"Torso","Left Leg"},  {"Torso","Right Leg"},
 }
+
 local MAX_BONES = #BonesR15
 
 ----------------------------------------------------------------
--- Drawing Factory (minimal property sets)
+-- Internal State  (ทุกอย่างอยู่ใน _state, Disable ล้างหมด)
+----------------------------------------------------------------
+local _state = nil   -- nil = ไม่ได้ Enable อยู่
+
+----------------------------------------------------------------
+-- Drawing Factory
 ----------------------------------------------------------------
 local function mkLine(thick, col)
     local d = Drawing.new("Line")
-    d.Visible, d.Thickness, d.Color, d.Transparency = false, thick or 1, col or C3new(1,1,1), 1
+    d.Visible      = false
+    d.Thickness    = thick or 1
+    d.Color        = col or C3new(1, 1, 1)
+    d.Transparency = 1
     return d
 end
 
 local function mkText(size, col)
     local d = Drawing.new("Text")
-    d.Visible, d.Center, d.Outline, d.OutlineColor = false, true, true, BLACK
-    d.Size, d.Font, d.Color, d.Transparency = size or ESP.FontSize, ESP.Font, col or C3new(1,1,1), 1
+    d.Visible      = false
+    d.Center       = true
+    d.Outline      = true
+    d.OutlineColor = BLACK
+    d.Size         = size or ESP.FontSize
+    d.Font         = ESP.Font
+    d.Color        = col or C3new(1, 1, 1)
+    d.Transparency = 1
     return d
 end
 
 local function mkSquare()
     local d = Drawing.new("Square")
-    d.Visible, d.Filled, d.Thickness, d.Transparency = false, false, 1, 1
+    d.Visible      = false
+    d.Filled       = false
+    d.Thickness    = 1
+    d.Transparency = 1
     return d
 end
 
 ----------------------------------------------------------------
--- Per-Player ESP Object
+-- Drawing keys สำหรับ loop
 ----------------------------------------------------------------
-local Pool = {}    -- [Player] = esp data
-local Conns = {}   -- [Player] = connection
+local DRAW_KEYS = {
+    "BoxOutline", "Box",
+    "Name", "Distance",
+    "HealthBarBG", "HealthBar", "HealthText",
+    "Tracer",
+}
 
--- Flat list of all drawing keys for fast hide/remove
-local DRAW_KEYS = {"BoxOutline","Box","Name","Distance","HealthBarBG","HealthBar","HealthText","Tracer"}
-
-local function createObj()
+----------------------------------------------------------------
+-- Per-player object create / hide / destroy
+----------------------------------------------------------------
+local function createObject()
     local o = {
-        BoxOutline = mkSquare(), Box = mkSquare(),
-        Name = mkText(ESP.FontSize, Colors.Name),
-        Distance = mkText(ESP.FontSize - 1, Colors.Distance),
-        HealthBarBG = mkLine(4, BLACK), HealthBar = mkLine(2), HealthText = mkText(ESP.FontSize - 2),
-        Tracer = mkLine(1, Colors.Tracer),
-        Bones = table.create(MAX_BONES),
-        Chams = nil,
-        -- Part cache (ลด FindFirstChild ทุก frame)
-        _parts = nil, -- populated on char load
+        BoxOutline  = mkSquare(),
+        Box         = mkSquare(),
+        Name        = mkText(ESP.FontSize),
+        Distance    = mkText(ESP.FontSize - 1),
+        HealthBarBG = mkLine(4, BLACK),
+        HealthBar   = mkLine(2),
+        HealthText  = mkText(ESP.FontSize - 2),
+        Tracer      = mkLine(1),
+        Bones       = table.create(MAX_BONES),
+        Chams       = nil,
+        Parts       = nil,   -- cached character parts
     }
     for i = 1, MAX_BONES do
-        o.Bones[i] = mkLine(1.5, Colors.Skeleton)
+        o.Bones[i] = mkLine(1.5)
     end
     return o
 end
 
-local function hideObj(o)
-    -- Drawing keys (ไม่มี pcall, ไม่มี type check)
+local function hideObject(o)
     for i = 1, #DRAW_KEYS do
         o[DRAW_KEYS[i]].Visible = false
     end
-    local bones = o.Bones
     for i = 1, MAX_BONES do
-        bones[i].Visible = false
+        o.Bones[i].Visible = false
     end
-    if o.Chams then o.Chams.Enabled = false end
+    if o.Chams then
+        o.Chams.Enabled = false
+    end
 end
 
-local function destroyObj(o)
+local function destroyObject(o)
     for i = 1, #DRAW_KEYS do
         local d = o[DRAW_KEYS[i]]
-        d.Visible = false          -- ★ ซ่อนก่อน
+        d.Visible = false
         d:Remove()
     end
     for i = 1, MAX_BONES do
-        o.Bones[i].Visible = false -- ★ ซ่อนก่อน
-        o.Bones[i]:Remove()
+        local b = o.Bones[i]
+        b.Visible = false
+        b:Remove()
     end
     if o.Chams then
-        o.Chams.Enabled = false    -- ★ ซ่อนก่อน
+        o.Chams.Enabled = false
         o.Chams:Destroy()
         o.Chams = nil
     end
 end
 
--- Cache character parts เมื่อ spawn (ไม่ต้อง FindFirstChild ทุก frame)
+----------------------------------------------------------------
+-- Cache character parts
+----------------------------------------------------------------
 local function cacheParts(char)
     if not char then return nil end
-    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hum  = char:FindFirstChildOfClass("Humanoid")
     local root = char:FindFirstChild("HumanoidRootPart")
     local head = char:FindFirstChild("Head")
     if not (hum and root and head) then return nil end
 
-    local isR15 = hum.RigType == Enum.HumanoidRigType.R15
-    local bones = isR15 and BonesR15 or BonesR6
-    local boneCount = #bones
+    local isR15     = (hum.RigType == Enum.HumanoidRigType.R15)
+    local bonesDef  = isR15 and BonesR15 or BonesR6
+    local boneCount = #bonesDef
 
-    -- Pre-resolve all bone parts
     local boneParts = table.create(boneCount)
     for i = 1, boneCount do
-        local b = bones[i]
-        local a, bPart = char:FindFirstChild(b[1]), char:FindFirstChild(b[2])
-        boneParts[i] = (a and bPart) and {a, bPart} or false
+        local a = char:FindFirstChild(bonesDef[i][1])
+        local b = char:FindFirstChild(bonesDef[i][2])
+        boneParts[i] = (a and b) and {a, b} or false
     end
 
     return {
-        Hum = hum, Root = root, Head = head,
-        IsR15 = isR15, BoneCount = boneCount, BoneParts = boneParts,
+        Hum       = hum,
+        Root      = root,
+        Head      = head,
+        BoneCount = boneCount,
+        BoneParts = boneParts,
     }
 end
 
 ----------------------------------------------------------------
--- Core Update (hot path — ทุกอย่าง inline/localized)
+-- Bounding-box computation (returns values via upvalues)
 ----------------------------------------------------------------
-local Camera -- refreshed per frame
+local bb_tl, bb_sz, bb_cx
 
-local bb_tl, bb_sz, bb_top, bb_bot, bb_cx, bb_cy -- reused bounding box vars (no table alloc)
+local function computeBB(camera, rootPos)
+    local _, on = camera:WorldToViewportPoint(rootPos)
+    if not on then return false end
 
-local function computeBB(rootPos)
-    local v, on = Camera:WorldToViewportPoint(rootPos)
-    if not on or v.Z < 1 then return false end
+    local vTop = camera:WorldToViewportPoint(rootPos + V3new(0, 3.25, 0))
+    local vBot = camera:WorldToViewportPoint(rootPos - V3new(0, 2.75, 0))
+    if vTop.Z < 1 then return false end
 
-    local vTop, _ = Camera:WorldToViewportPoint(rootPos + V3new(0, 3.25, 0))
-    local vBot, _ = Camera:WorldToViewportPoint(rootPos - V3new(0, 2.75, 0))
-
-    local h = mabs(vBot.Y - vTop.Y)
-    local w = h * 0.55
+    local h  = mabs(vBot.Y - vTop.Y)
+    local w  = h * 0.55
     bb_cx = (vTop.X + vBot.X) * 0.5
-    bb_cy = (vTop.Y + vBot.Y) * 0.5
     bb_tl = V2new(bb_cx - w * 0.5, vTop.Y)
     bb_sz = V2new(w, h)
-    bb_top = V2new(vTop.X, vTop.Y)
-    bb_bot = V2new(vBot.X, vBot.Y)
     return true
 end
 
-local function updateESP()
-    Camera = workspace.CurrentCamera
-    if not Camera then return end
+----------------------------------------------------------------
+-- Render loop
+----------------------------------------------------------------
+local function renderFrame()
+    local s = _state
+    if not s then return end
 
-    local camPos = Camera.CFrame.Position
-    local vpSize = Camera.ViewportSize
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    local camPos  = camera.CFrame.Position
+    local vpSize  = camera.ViewportSize
     local maxDist = ESP.MaxDistance
-    local teamCheck = ESP.TeamCheck
-    local myTeam = LocalPlayer.Team
+    local myTeam  = LocalPlayer.Team
 
-    local eBox, eName, eHP, eDist, eTracer, eSkel, eChams =
-        Enabled.Box, Enabled.Name, Enabled.HealthBar,
-        Enabled.Distance, Enabled.Tracer, Enabled.Skeleton, Enabled.Chams
+    local eBox   = ESP.Box
+    local eName  = ESP.Name
+    local eHP    = ESP.HealthBar
+    local eDist  = ESP.Distance
+    local eTrace = ESP.Tracer
+    local eSkel  = ESP.Skeleton
+    local eChams = ESP.Chams
+    local anyOn  = eBox or eName or eHP or eDist or eTrace or eSkel or eChams
 
-    local anyEnabled = eBox or eName or eHP or eDist or eTracer or eSkel or eChams
-
-    for player, obj in next, Pool do
-        -- Early exit chain (single branch path)
-        local parts = obj._parts
-        local skip = not anyEnabled
-            or player.Parent == nil
-            or (teamCheck and player.Team and player.Team == myTeam)
-            or parts == nil
+    for player, obj in next, s.pool do
+        -- ตรวจว่าควร skip หรือไม่
+        local parts = obj.Parts
+        local skip  = (not anyOn)
+                   or (player.Parent == nil)
+                   or (ESP.TeamCheck and player.Team and player.Team == myTeam)
+                   or (parts == nil)
 
         if not skip then
             local hum, root = parts.Hum, parts.Root
-            skip = (not root.Parent) or (not hum.Parent) or hum.Health <= 0
+            if (not root.Parent) or (not hum.Parent) or hum.Health <= 0 then
+                skip = true
+            end
         end
 
         if not skip then
             local rootPos = parts.Root.Position
-            local dist = (camPos - rootPos).Magnitude
-            skip = dist > maxDist or not computeBB(rootPos)
+            local dist    = (camPos - rootPos).Magnitude
 
-            if not skip then
-                local hum = parts.Hum
-                local hpFrac = mclamp(hum.Health / hum.MaxHealth, 0, 1)
-
-                -- Box
-                if eBox then
-                    local bo, bx = obj.BoxOutline, obj.Box
-                    bo.Visible, bo.Position, bo.Size, bo.Color, bo.Thickness = true, bb_tl - ONE_V2, bb_sz + TWO_V2, BLACK, 3
-                    bx.Visible, bx.Position, bx.Size, bx.Color = true, bb_tl, bb_sz, Colors.Box
-                else
-                    obj.BoxOutline.Visible, obj.Box.Visible = false, false
-                end
-
-                -- Name
-                if eName then
-                    local n = obj.Name
-                    n.Visible, n.Text, n.Color = true, player.DisplayName, Colors.Name
-                    n.Position = V2new(bb_cx, bb_tl.Y - ESP.FontSize - 4)
-                else
-                    obj.Name.Visible = false
-                end
-
-                -- Distance
-                if eDist then
-                    local d = obj.Distance
-                    d.Visible, d.Color = true, Colors.Distance
-                    d.Position = V2new(bb_cx, bb_tl.Y + bb_sz.Y + 2)
-                    d.Text = mfloor(dist) .. "m"
-                else
-                    obj.Distance.Visible = false
-                end
-
-                -- HealthBar
-                if eHP then
-                    local barX = bb_tl.X - 5
-                    local topY, botY = bb_tl.Y, bb_tl.Y + bb_sz.Y
-                    local filledY = botY - bb_sz.Y * hpFrac
-                    local hpCol = C3new(
-                        Colors.HealthLow.R + (Colors.HealthHigh.R - Colors.HealthLow.R) * hpFrac,
-                        Colors.HealthLow.G + (Colors.HealthHigh.G - Colors.HealthLow.G) * hpFrac,
-                        Colors.HealthLow.B + (Colors.HealthHigh.B - Colors.HealthLow.B) * hpFrac
-                    )
-
-                    local bg, bar = obj.HealthBarBG, obj.HealthBar
-                    bg.Visible, bg.From, bg.To = true, V2new(barX, topY), V2new(barX, botY)
-                    bar.Visible, bar.From, bar.To, bar.Color = true, V2new(barX, filledY), V2new(barX, botY), hpCol
-
-                    local ht = obj.HealthText
-                    if hpFrac < 1 then
-                        ht.Visible, ht.Color = true, hpCol
-                        ht.Position = V2new(barX, filledY - ESP.FontSize + 2)
-                        ht.Text = tostring(mfloor(hum.Health))
-                    else
-                        ht.Visible = false
-                    end
-                else
-                    obj.HealthBarBG.Visible, obj.HealthBar.Visible, obj.HealthText.Visible = false, false, false
-                end
-
-                -- Tracer
-                if eTracer then
-                    local t = obj.Tracer
-                    t.Visible, t.Color = true, Colors.Tracer
-                    t.From = V2new(vpSize.X * 0.5, vpSize.Y)
-                    t.To = V2new(bb_cx, bb_tl.Y + bb_sz.Y)
-                else
-                    obj.Tracer.Visible = false
-                end
-
-                -- Skeleton
-                if eSkel then
-                    local bp = parts.BoneParts
-                    local bc = parts.BoneCount
-                    local bones = obj.Bones
-                    local skelCol = Colors.Skeleton
-
-                    for i = 1, bc do
-                        local line = bones[i]
-                        local pair = bp[i]
-                        if pair then
-                            local vA, onA = Camera:WorldToViewportPoint(pair[1].Position)
-                            local vB, onB = Camera:WorldToViewportPoint(pair[2].Position)
-                            if onA and onB then
-                                line.From = V2new(vA.X, vA.Y)
-                                line.To = V2new(vB.X, vB.Y)
-                                line.Color = skelCol
-                                line.Visible = true
-                            else
-                                line.Visible = false
-                            end
-                        else
-                            line.Visible = false
-                        end
-                    end
-                    for i = bc + 1, MAX_BONES do
-                        bones[i].Visible = false
-                    end
-                else
-                    local bones = obj.Bones
-                    for i = 1, MAX_BONES do bones[i].Visible = false end
-                end
-
-                -- Chams
-                if eChams then
-                    local ch = obj.Chams
-                    if not ch or not ch.Parent then
-                        ch = Instance.new("Highlight")
-                        ch.FillTransparency, ch.OutlineTransparency = 0.5, 0
-                        ch.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                        ch.Parent = gethui()
-                        obj.Chams = ch
-                    end
-                    ch.Adornee = player.Character
-                    ch.FillColor, ch.OutlineColor, ch.Enabled = Colors.ChamsFill, Colors.ChamsOutline, true
-                elseif obj.Chams then
-                    obj.Chams.Enabled = false
-                end
-
-                continue -- skip hideAll
+            if dist > maxDist or not computeBB(camera, rootPos) then
+                skip = true
             end
         end
 
-        -- ถ้าถึงตรงนี้ = skip
-        hideObj(obj)
+        if skip then
+            hideObject(obj)
+            continue
+        end
+
+        -- ===== Draw =====
+        local parts  = obj.Parts
+        local hum    = parts.Hum
+        local hpFrac = mclamp(hum.Health / hum.MaxHealth, 0, 1)
+        local dist   = (camPos - parts.Root.Position).Magnitude
+
+        -- Box
+        if eBox then
+            local bo, bx = obj.BoxOutline, obj.Box
+            bo.Position  = bb_tl - ONE_V2
+            bo.Size      = bb_sz + TWO_V2
+            bo.Color     = BLACK
+            bo.Thickness = 3
+            bo.Visible   = true
+
+            bx.Position = bb_tl
+            bx.Size     = bb_sz
+            bx.Color    = ESP.BoxColor
+            bx.Visible  = true
+        else
+            obj.BoxOutline.Visible = false
+            obj.Box.Visible        = false
+        end
+
+        -- Name
+        if eName then
+            local n = obj.Name
+            n.Text     = player.DisplayName
+            n.Color    = ESP.NameColor
+            n.Size     = ESP.FontSize
+            n.Position = V2new(bb_cx, bb_tl.Y - ESP.FontSize - 4)
+            n.Visible  = true
+        else
+            obj.Name.Visible = false
+        end
+
+        -- Distance
+        if eDist then
+            local d = obj.Distance
+            d.Text     = mfloor(dist) .. "m"
+            d.Color    = ESP.DistanceColor
+            d.Position = V2new(bb_cx, bb_tl.Y + bb_sz.Y + 2)
+            d.Visible  = true
+        else
+            obj.Distance.Visible = false
+        end
+
+        -- Health Bar
+        if eHP then
+            local barX = bb_tl.X - 5
+            local topY = bb_tl.Y
+            local botY = bb_tl.Y + bb_sz.Y
+            local fillY = botY - bb_sz.Y * hpFrac
+
+            local lo, hi = ESP.HealthLowColor, ESP.HealthHighColor
+            local hpCol  = C3new(
+                lo.R + (hi.R - lo.R) * hpFrac,
+                lo.G + (hi.G - lo.G) * hpFrac,
+                lo.B + (hi.B - lo.B) * hpFrac
+            )
+
+            local bg  = obj.HealthBarBG
+            bg.From    = V2new(barX, topY)
+            bg.To      = V2new(barX, botY)
+            bg.Visible = true
+
+            local bar  = obj.HealthBar
+            bar.From    = V2new(barX, fillY)
+            bar.To      = V2new(barX, botY)
+            bar.Color   = hpCol
+            bar.Visible = true
+
+            local ht = obj.HealthText
+            if hpFrac < 1 then
+                ht.Text     = tostring(mfloor(hum.Health))
+                ht.Color    = hpCol
+                ht.Position = V2new(barX, fillY - ESP.FontSize + 2)
+                ht.Visible  = true
+            else
+                ht.Visible = false
+            end
+        else
+            obj.HealthBarBG.Visible  = false
+            obj.HealthBar.Visible    = false
+            obj.HealthText.Visible   = false
+        end
+
+        -- Tracer
+        if eTrace then
+            local t  = obj.Tracer
+            t.From    = V2new(vpSize.X * 0.5, vpSize.Y)
+            t.To      = V2new(bb_cx, bb_tl.Y + bb_sz.Y)
+            t.Color   = ESP.TracerColor
+            t.Visible = true
+        else
+            obj.Tracer.Visible = false
+        end
+
+        -- Skeleton
+        if eSkel then
+            local bp      = parts.BoneParts
+            local bc      = parts.BoneCount
+            local bones   = obj.Bones
+            local skelCol = ESP.SkeletonColor
+            for i = 1, bc do
+                local line = bones[i]
+                local pair = bp[i]
+                if pair then
+                    local vA, onA = camera:WorldToViewportPoint(pair[1].Position)
+                    local vB, onB = camera:WorldToViewportPoint(pair[2].Position)
+                    if onA and onB then
+                        line.From    = V2new(vA.X, vA.Y)
+                        line.To      = V2new(vB.X, vB.Y)
+                        line.Color   = skelCol
+                        line.Visible = true
+                    else
+                        line.Visible = false
+                    end
+                else
+                    line.Visible = false
+                end
+            end
+            for i = bc + 1, MAX_BONES do
+                bones[i].Visible = false
+            end
+        else
+            for i = 1, MAX_BONES do
+                obj.Bones[i].Visible = false
+            end
+        end
+
+        -- Chams
+        if eChams then
+            local ch = obj.Chams
+            if not ch or not ch.Parent then
+                ch = Instance.new("Highlight")
+                ch.FillTransparency    = 0.5
+                ch.OutlineTransparency = 0
+                ch.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+                ch.Parent              = gethui()
+                obj.Chams = ch
+            end
+            ch.Adornee      = player.Character
+            ch.FillColor    = ESP.ChamsFillColor
+            ch.OutlineColor = ESP.ChamsOutlineColor
+            ch.Enabled      = true
+        elseif obj.Chams then
+            obj.Chams.Enabled = false
+        end
     end
 end
 
 ----------------------------------------------------------------
--- Player lifecycle
+-- Bind / Unbind players
 ----------------------------------------------------------------
-local function bindPlayer(player)
+local function onCharacterAdded(s, player, obj, char)
+    task.defer(function()
+        task.wait(0.3)
+        if not (_state and _state == s) then return end
+        if not s.pool[player] then return end
+        obj.Parts = cacheParts(char)
+    end)
+end
+
+local function bindPlayer(s, player)
     if player == LocalPlayer then return end
-    local obj = createObj()
-    Pool[player] = obj
+    if s.pool[player] then return end
 
-    local function onChar(char)
-        task.defer(function()
-            task.wait(0.3)
-            if not Pool[player] then return end
-            obj._parts = cacheParts(char)
-        end)
-    end
+    local obj = createObject()
+    s.pool[player] = obj
 
-    Conns[player] = player.CharacterAdded:Connect(onChar)
-    if player.Character then onChar(player.Character) end
-end
+    s.conns[player] = player.CharacterAdded:Connect(function(char)
+        onCharacterAdded(s, player, obj, char)
+    end)
 
-local function unbindPlayer(player)
-    if Conns[player] then Conns[player]:Disconnect(); Conns[player] = nil end
-    local obj = Pool[player]
-    if obj then destroyObj(obj); Pool[player] = nil end
-end
-
-----------------------------------------------------------------
--- Toggle API (generated, zero boilerplate)
-----------------------------------------------------------------
-local function makeToggle(key)
-    return setmetatable({}, {__index = {
-        Enable  = function() Enabled[key] = true end,
-        Disable = function() Enabled[key] = false end,
-        Toggle  = function() Enabled[key] = not Enabled[key] end,
-        IsEnabled = function() return Enabled[key] end,
-        SetColor = function(_, c) Colors[key] = c end,
-    }})
-end
-
-ESP.box       = makeToggle("Box")
-ESP.name      = makeToggle("Name")
-ESP.healthbar = makeToggle("HealthBar")
-ESP.distance  = makeToggle("Distance")
-ESP.tracer    = makeToggle("Tracer")
-ESP.skeleton  = makeToggle("Skeleton")
-ESP.chams     = makeToggle("Chams")
-
-function ESP.chams:SetFillColor(c)     Colors.ChamsFill = c end
-function ESP.chams:SetOutlineColor(c)  Colors.ChamsOutline = c end
-function ESP.healthbar:SetHighColor(c) Colors.HealthHigh = c end
-function ESP.healthbar:SetLowColor(c)  Colors.HealthLow = c end
-
-----------------------------------------------------------------
--- Master controls
-----------------------------------------------------------------
-local renderConn
-
-function ESP:Start()
-    if renderConn then return end
-    for _, p in ipairs(Players:GetPlayers()) do bindPlayer(p) end
-    Conns._add = Players.PlayerAdded:Connect(bindPlayer)
-    Conns._rem = Players.PlayerRemoving:Connect(unbindPlayer)
-    renderConn = RunService.RenderStepped:Connect(updateESP)
-end
-
-function ESP:Stop()
-    if renderConn then renderConn:Disconnect(); renderConn = nil end
-    for k, c in next, Conns do c:Disconnect(); Conns[k] = nil end
-
-    -- ★ collect ก่อน iterate เพื่อไม่แก้ table ระหว่าง loop
-    local players = {}
-    for p in next, Pool do players[#players + 1] = p end
-    for _, p in ipairs(players) do
-        unbindPlayer(p)
+    if player.Character then
+        onCharacterAdded(s, player, obj, player.Character)
     end
 end
 
-function ESP:EnableAll()  for k in next, Enabled do Enabled[k] = true end end
-function ESP:DisableAll() for k in next, Enabled do Enabled[k] = false end for _, obj in next, Pool do hideObj(obj) end end
-function ESP:SetMaxDistance(d) ESP.MaxDistance = d end
-function ESP:SetTeamCheck(v) ESP.TeamCheck = v end
+local function unbindPlayer(s, player)
+    if s.conns[player] then
+        s.conns[player]:Disconnect()
+        s.conns[player] = nil
+    end
+    local obj = s.pool[player]
+    if obj then
+        destroyObject(obj)
+        s.pool[player] = nil
+    end
+end
+
+----------------------------------------------------------------
+-- PUBLIC API:  Enable / Disable
+----------------------------------------------------------------
+function ESP:Enable()
+    -- ถ้า Enable อยู่แล้ว ไม่ทำซ้ำ
+    if _state then return end
+
+    local s = {
+        pool  = {},   -- [Player] = drawingObject
+        conns = {},   -- [Player] = CharacterAdded connection
+        renderConn  = nil,
+        addedConn   = nil,
+        removedConn = nil,
+    }
+    _state = s
+
+    -- Bind ผู้เล่นที่มีอยู่
+    for _, player in ipairs(Players:GetPlayers()) do
+        bindPlayer(s, player)
+    end
+
+    -- Bind ผู้เล่นใหม่
+    s.addedConn = Players.PlayerAdded:Connect(function(player)
+        if _state == s then bindPlayer(s, player) end
+    end)
+
+    -- Unbind ผู้เล่นที่ออก
+    s.removedConn = Players.PlayerRemoving:Connect(function(player)
+        if _state == s then unbindPlayer(s, player) end
+    end)
+
+    -- Start render
+    s.renderConn = RunService.RenderStepped:Connect(renderFrame)
+end
+
+function ESP:Disable()
+    local s = _state
+    if not s then return end
+
+    -- 1) หยุด render ทันที
+    if s.renderConn then
+        s.renderConn:Disconnect()
+        s.renderConn = nil
+    end
+
+    -- 2) ตัด global connections
+    if s.addedConn then
+        s.addedConn:Disconnect()
+        s.addedConn = nil
+    end
+    if s.removedConn then
+        s.removedConn:Disconnect()
+        s.removedConn = nil
+    end
+
+    -- 3) ตัด per-player connections
+    for player, conn in next, s.conns do
+        conn:Disconnect()
+        s.conns[player] = nil
+    end
+
+    -- 4) ทำลาย Drawing + Chams ทุกชิ้น
+    for player, obj in next, s.pool do
+        destroyObject(obj)
+        s.pool[player] = nil
+    end
+
+    -- 5) ล้าง state
+    _state = nil
+end
 
 return ESP
