@@ -1,39 +1,39 @@
 local a=game:GetService"Players"
 local b=game:GetService"RunService"
+game:GetService"UserInputService"
 local c=a.LocalPlayer
 
 local d=Vector2.new
 local e=Vector3.new
 local f=Color3.new
-local g=Color3.fromRGB
-local h=math.floor
-local i=math.abs
-local j=math.clamp
+local g=Color3.fromRGB local h=
+CFrame.lookAt
+local i=math.floor
+local j=math.abs
+local k=math.clamp
 
 if _G.__ESP_CLEANUP then
 pcall(_G.__ESP_CLEANUP)
 end
 
-local k={"Box","Name","HealthBar","Distance","Tracer","Skeleton","Chams"}
-local l={}
-for m,n in ipairs(k)do l[n]=true end
+local l={
+"Box","Name","HealthBar","Distance","Tracer","Skeleton","Chams",
+"Aimbot","AimbotShowFOV",
+}
+local m={}
+for n,o in ipairs(l)do m[o]=true end
 
-if type(_G.__ESP_FLAGS)~="table"then
-_G.__ESP_FLAGS={}
+if type(_G.__ESP_FLAGS)~="table"then _G.__ESP_FLAGS={}end
+for n,o in ipairs(l)do
+if _G.__ESP_FLAGS[o]==nil then _G.__ESP_FLAGS[o]=false end
 end
-for m,n in ipairs(k)do
-if _G.__ESP_FLAGS[n]==nil then
-_G.__ESP_FLAGS[n]=false
-end
-end
-local m=_G.__ESP_FLAGS
+local n=_G.__ESP_FLAGS
 
-if type(_G.__ESP_SETTINGS)~="table"then
-_G.__ESP_SETTINGS={}
-end
-local n=_G.__ESP_SETTINGS
+if type(_G.__ESP_SETTINGS)~="table"then _G.__ESP_SETTINGS={}end
+local o=_G.__ESP_SETTINGS
 
-local o={
+local p={
+
 TeamCheck=false,
 MaxDistance=2000,
 Font=Drawing.Fonts.Plex,
@@ -47,18 +47,26 @@ HealthHighColor=g(0,255,0),
 HealthLowColor=g(255,0,0),
 ChamsFillColor=g(255,0,0),
 ChamsOutlineColor=g(255,255,255),
+
+AimbotFOVRadius=200,
+AimbotSmooth=5,
+AimbotPart="Head",
+AimbotKey=Enum.UserInputType.MouseButton2,
+AimbotFOVColor=g(255,255,255),
+AimbotWallCheck=false,
+AimbotFOVSides=60,
+AimbotFOVThickness=1,
+AimbotFOVFilled=false,
 }
-for p,q in next,o do
-if n[p]==nil then
-n[p]=q
-end
+for q,r in next,p do
+if o[q]==nil then o[q]=r end
 end
 
-local p=f(0,0,0)
-local q=d(1,1)
-local r=d(2,2)
+local q=f(0,0,0)
+local r=d(1,1)
+local s=d(2,2)
 
-local s={
+local t={
 {"Head","UpperTorso"},
 {"UpperTorso","LowerTorso"},
 {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
@@ -66,323 +74,475 @@ local s={
 {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
 {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"},
 }
-local t={
+local u={
 {"Head","Torso"},
 {"Torso","Left Arm"},{"Torso","Right Arm"},
 {"Torso","Left Leg"},{"Torso","Right Leg"},
 }
-local u=#s
+local v=#t
 
-local v=false
-local w=0
-local x={}
+local w=false
+local x=0
 local y={}
 local z={}
+local A={}
+local B
+local C
 
-local function safeRemove(A)
-if not A then return end
-pcall(function()A.Visible=false end)
-pcall(function()A:Remove()end)
+local function safeRemove(D)
+if not D then return end
+pcall(function()D.Visible=false end)
+pcall(function()D:Remove()end)
 end
 
-local function safeDestroy(A)
-if not A then return end
-pcall(function()A.Enabled=false end)
-pcall(function()A:Destroy()end)
+local function safeDestroy(D)
+if not D then return end
+pcall(function()D.Enabled=false end)
+pcall(function()D:Destroy()end)
 end
 
-local function safeDisconnect(A)
-if not A then return end
-pcall(function()A:Disconnect()end)
+local function safeDisconnect(D)
+if not D then return end
+pcall(function()D:Disconnect()end)
 end
 
-local function mkLine(A,B)
-local C=Drawing.new"Line"
-C.Visible=false;C.Thickness=A or 1
-C.Color=B or f(1,1,1);C.Transparency=1
-return C
+local function mkLine(D,E)
+local F=Drawing.new"Line"
+F.Visible=false;F.Thickness=D or 1
+F.Color=E or f(1,1,1);F.Transparency=1
+return F
 end
 
-local function mkText(A,B)
-local C=Drawing.new"Text"
-C.Visible=false;C.Center=true;C.Outline=true
-C.OutlineColor=p
-C.Size=A or n.FontSize
-C.Font=n.Font
-C.Color=B or f(1,1,1);C.Transparency=1
-return C
+local function mkText(D,E)
+local F=Drawing.new"Text"
+F.Visible=false;F.Center=true;F.Outline=true
+F.OutlineColor=q
+F.Size=D or o.FontSize
+F.Font=o.Font
+F.Color=E or f(1,1,1);F.Transparency=1
+return F
 end
 
 local function mkSquare()
-local A=Drawing.new"Square"
-A.Visible=false;A.Filled=false
-A.Thickness=1;A.Transparency=1
-return A
+local D=Drawing.new"Square"
+D.Visible=false;D.Filled=false
+D.Thickness=1;D.Transparency=1
+return D
 end
 
-local A={"BoxOutline","Box","Name","Distance","HealthBarBG","HealthBar","HealthText","Tracer"}
+local D={"BoxOutline","Box","Name","Distance","HealthBarBG","HealthBar","HealthText","Tracer"}
 
 local function createObject()
-local B={
+local E={
 BoxOutline=mkSquare(),
 Box=mkSquare(),
-Name=mkText(n.FontSize),
-Distance=mkText(n.FontSize-1),
-HealthBarBG=mkLine(4,p),
+Name=mkText(o.FontSize),
+Distance=mkText(o.FontSize-1),
+HealthBarBG=mkLine(4,q),
 HealthBar=mkLine(2),
-HealthText=mkText(n.FontSize-2),
+HealthText=mkText(o.FontSize-2),
 Tracer=mkLine(1),
 Bones={},
 Chams=nil,
 Parts=nil,
 }
-for C=1,u do
-B.Bones[C]=mkLine(1.5)
-end
-return B
+for F=1,v do E.Bones[F]=mkLine(1.5)end
+return E
 end
 
-local function hideObject(B)
-for C=1,#A do
-pcall(function()B[A[C] ].Visible=false end)
+local function hideObject(E)
+for F=1,#D do
+pcall(function()E[D[F] ].Visible=false end)
 end
-for C=1,u do
-if B.Bones[C]then pcall(function()B.Bones[C].Visible=false end)end
+for F=1,v do
+if E.Bones[F]then pcall(function()E.Bones[F].Visible=false end)end
 end
-if B.Chams then pcall(function()B.Chams.Enabled=false end)end
-end
-
-local function destroyObject(B)
-for C=1,#A do safeRemove(B[A[C] ])end
-for C=1,u do safeRemove(B.Bones[C])end
-safeDestroy(B.Chams)
-B.Chams=nil;B.Parts=nil
+if E.Chams then pcall(function()E.Chams.Enabled=false end)end
 end
 
-local function cacheParts(B)
-if not B then return nil end
-local C=B:FindFirstChildOfClass"Humanoid"
-local D=B:FindFirstChild"HumanoidRootPart"
-local E=B:FindFirstChild"Head"
-if not(C and D and E)then return nil end
-
-local F=(C.RigType==Enum.HumanoidRigType.R15)
-local G=F and s or t
-local H=#G
-local I={}
-for J=1,H do
-local K=B:FindFirstChild(G[J][1])
-local L=B:FindFirstChild(G[J][2])
-I[J]=(K and L)and{K,L}or false
-end
-return{Hum=C,Root=D,Head=E,BoneCount=H,BoneParts=I}
+local function destroyObject(E)
+for F=1,#D do safeRemove(E[D[F] ])end
+for F=1,v do safeRemove(E.Bones[F])end
+safeDestroy(E.Chams)
+E.Chams=nil;E.Parts=nil
 end
 
-local B,C,D
+local function cacheParts(E)
+if not E then return nil end
+local F=E:FindFirstChildOfClass"Humanoid"
+local G=E:FindFirstChild"HumanoidRootPart"
+local H=E:FindFirstChild"Head"
+if not(F and G and H)then return nil end
 
-local function computeBB(E,F)local
-G, H=E:WorldToViewportPoint(F)
-if not H then return false end
-local I=E:WorldToViewportPoint(F+e(0,3.25,0))
-local J=E:WorldToViewportPoint(F-e(0,2.75,0))
-if I.Z<1 then return false end
-local K=i(J.Y-I.Y)
-local L=K*0.55
-D=(I.X+J.X)*0.5
-B=d(D-L*0.5,I.Y)
-C=d(L,K)
+local I=(F.RigType==Enum.HumanoidRigType.R15)
+local J=I and t or u
+local K=#J
+local L={}
+for M=1,K do
+local N=E:FindFirstChild(J[M][1])
+local O=E:FindFirstChild(J[M][2])
+L[M]=(N and O)and{N,O}or false
+end
+return{Hum=F,Root=G,Head=H,BoneCount=K,BoneParts=L}
+end
+
+local E,F,G
+
+local function computeBB(H,I)local
+J, K=H:WorldToViewportPoint(I)
+if not K then return false end
+local L=H:WorldToViewportPoint(I+e(0,3.25,0))
+local M=H:WorldToViewportPoint(I-e(0,2.75,0))
+if L.Z<1 then return false end
+local N=j(M.Y-L.Y)
+local O=N*0.55
+G=(L.X+M.X)*0.5
+E=d(G-O*0.5,L.Y)
+F=d(O,N)
 return true
 end
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function destroyFOVCircle()
+safeRemove(B)
+B=nil
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 local function renderFrame()
-if not v then return end
-local E=workspace.CurrentCamera
-if not E then return end
+if not w then return end
+local H=workspace.CurrentCamera
+if not H then return end
 
-local F=E.CFrame.Position
-local G=E.ViewportSize
-local H=n.MaxDistance
-local I=c.Team
+local I=H.CFrame.Position
+local J=H.ViewportSize
+local K=o.MaxDistance
+local L=c.Team
 
-local J=m.Box
-local K=m.Name
-local L=m.HealthBar
-local M=m.Distance
-local N=m.Tracer
-local O=m.Skeleton
-local P=m.Chams
+local M=n.Box
+local N=n.Name
+local O=n.HealthBar
+local P=n.Distance
+local Q=n.Tracer
+local R=n.Skeleton
+local S=n.Chams
 
-for Q,R in next,x do
-local S=false
-local T=R.Parts
+for T,U in next,y do
+local V=false
+local W=U.Parts
 
-if Q.Parent~=nil and T~=nil then
-if not(n.TeamCheck and Q.Team and Q.Team==I)then
-local U=T.Hum
-local V=T.Root
-if V and V.Parent and U and U.Parent and U.Health>0 then
-local W=V.Position
-local X=(F-W).Magnitude
-if X<=H and computeBB(E,W)then
-S=true
-local Y=j(U.Health/U.MaxHealth,0,1)
-
-if J then
-R.BoxOutline.Position=B-q
-R.BoxOutline.Size=C+r
-R.BoxOutline.Color=p
-R.BoxOutline.Thickness=3
-R.BoxOutline.Visible=true
-R.Box.Position=B
-R.Box.Size=C
-R.Box.Color=n.BoxColor
-R.Box.Visible=true
-else
-R.BoxOutline.Visible=false
-R.Box.Visible=false
-end
-
-if K then
-R.Name.Text=Q.DisplayName
-R.Name.Color=n.NameColor
-R.Name.Size=n.FontSize
-R.Name.Font=n.Font
-R.Name.Position=d(D,B.Y-n.FontSize-4)
-R.Name.Visible=true
-else
-R.Name.Visible=false
-end
+if T.Parent~=nil and W~=nil then
+if not(o.TeamCheck and T.Team and T.Team==L)then
+local X=W.Hum
+local Y=W.Root
+if Y and Y.Parent and X and X.Parent and X.Health>0 then
+local Z=Y.Position
+local _=(I-Z).Magnitude
+if _<=K and computeBB(H,Z)then
+V=true
+local aa=k(X.Health/X.MaxHealth,0,1)
 
 if M then
-R.Distance.Text=h(X).."m"
-R.Distance.Color=n.DistanceColor
-R.Distance.Size=n.FontSize-1
-R.Distance.Font=n.Font
-R.Distance.Position=d(D,B.Y+C.Y+2)
-R.Distance.Visible=true
+U.BoxOutline.Position=E-r
+U.BoxOutline.Size=F+s
+U.BoxOutline.Color=q
+U.BoxOutline.Thickness=3
+U.BoxOutline.Visible=true
+U.Box.Position=E
+U.Box.Size=F
+U.Box.Color=o.BoxColor
+U.Box.Visible=true
 else
-R.Distance.Visible=false
-end
-
-if L then
-local Z=B.X-5
-local _=B.Y
-local aa=B.Y+C.Y
-local ab=aa-C.Y*Y
-local ac=n.HealthLowColor
-local ad=n.HealthHighColor
-local ae=f(
-ac.R+(ad.R-ac.R)*Y,
-ac.G+(ad.G-ac.G)*Y,
-ac.B+(ad.B-ac.B)*Y
-)
-R.HealthBarBG.From=d(Z,_)
-R.HealthBarBG.To=d(Z,aa)
-R.HealthBarBG.Visible=true
-R.HealthBar.From=d(Z,ab)
-R.HealthBar.To=d(Z,aa)
-R.HealthBar.Color=ae
-R.HealthBar.Visible=true
-if Y<1 then
-R.HealthText.Text=tostring(h(U.Health))
-R.HealthText.Color=ae
-R.HealthText.Position=d(Z,ab-n.FontSize+2)
-R.HealthText.Visible=true
-else
-R.HealthText.Visible=false
-end
-else
-R.HealthBarBG.Visible=false
-R.HealthBar.Visible=false
-R.HealthText.Visible=false
+U.BoxOutline.Visible=false
+U.Box.Visible=false
 end
 
 if N then
-R.Tracer.From=d(G.X*0.5,G.Y)
-R.Tracer.To=d(D,B.Y+C.Y)
-R.Tracer.Color=n.TracerColor
-R.Tracer.Visible=true
+U.Name.Text=T.DisplayName
+U.Name.Color=o.NameColor
+U.Name.Size=o.FontSize
+U.Name.Font=o.Font
+U.Name.Position=d(G,E.Y-o.FontSize-4)
+U.Name.Visible=true
 else
-R.Tracer.Visible=false
+U.Name.Visible=false
+end
+
+
+if P then
+U.Distance.Text=i(_).."m"
+U.Distance.Color=o.DistanceColor
+U.Distance.Size=o.FontSize-1
+U.Distance.Font=o.Font
+U.Distance.Position=d(G,E.Y+F.Y+2)
+U.Distance.Visible=true
+else
+U.Distance.Visible=false
 end
 
 if O then
-local aa=T.BoneParts
-local ab=T.BoneCount
-local ac=R.Bones
-local ad=n.SkeletonColor
-for ae=1,ab do
-local Z=ac[ae]
-local _=aa[ae]
-if _ then
-local af,ag=E:WorldToViewportPoint(_[1].Position)
-local ah,ai=E:WorldToViewportPoint(_[2].Position)
-if ag and ai then
-Z.From=d(af.X,af.Y)
-Z.To=d(ah.X,ah.Y)
-Z.Color=ad
-Z.Visible=true
+local ab=E.X-5
+local ac=E.Y
+local ad=E.Y+F.Y
+local ae=ad-F.Y*aa
+local af=o.HealthLowColor
+local ag=o.HealthHighColor
+local ah=f(
+af.R+(ag.R-af.R)*aa,
+af.G+(ag.G-af.G)*aa,
+af.B+(ag.B-af.B)*aa
+)
+U.HealthBarBG.From=d(ab,ac)
+U.HealthBarBG.To=d(ab,ad)
+U.HealthBarBG.Visible=true
+U.HealthBar.From=d(ab,ae)
+U.HealthBar.To=d(ab,ad)
+U.HealthBar.Color=ah
+U.HealthBar.Visible=true
+if aa<1 then
+U.HealthText.Text=tostring(i(X.Health))
+U.HealthText.Color=ah
+U.HealthText.Position=d(ab,ae-o.FontSize+2)
+U.HealthText.Visible=true
 else
-Z.Visible=false
+U.HealthText.Visible=false
 end
 else
-Z.Visible=false
+U.HealthBarBG.Visible=false
+U.HealthBar.Visible=false
+U.HealthText.Visible=false
 end
+
+
+if Q then
+U.Tracer.From=d(J.X*0.5,J.Y)
+U.Tracer.To=d(G,E.Y+F.Y)
+U.Tracer.Color=o.TracerColor
+U.Tracer.Visible=true
+else
+U.Tracer.Visible=false
 end
-for ae=ab+1,u do
-if ac[ae]then ac[ae].Visible=false end
+
+if R then
+local ab=W.BoneParts
+local ac=W.BoneCount
+local ad=U.Bones
+local ae=o.SkeletonColor
+for af=1,ac do
+local ag=ad[af]
+local ah=ab[af]
+if ah then
+local ai,aj=H:WorldToViewportPoint(ah[1].Position)
+local ak,al=H:WorldToViewportPoint(ah[2].Position)
+if aj and al then
+ag.From=d(ai.X,ai.Y)
+ag.To=d(ak.X,ak.Y)
+ag.Color=ae
+ag.Visible=true
+else
+ag.Visible=false
 end
 else
-for aa=1,u do
-if R.Bones[aa]then R.Bones[aa].Visible=false end
+ag.Visible=false
+end
+end
+for af=ac+1,v do
+if ad[af]then ad[af].Visible=false end
+end
+else
+for ab=1,v do
+if U.Bones[ab]then U.Bones[ab].Visible=false end
 end
 end
 
-if P then
-local aa=R.Chams
-if not aa or not aa.Parent then
-aa=Instance.new"Highlight"
-aa.FillTransparency=0.5
-aa.OutlineTransparency=0
-aa.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-local ab=pcall(function()aa.Parent=gethui()end)
-if not ab then
-pcall(function()aa.Parent=game:GetService"CoreGui"end)
+if S then
+local ab=U.Chams
+if not ab or not ab.Parent then
+ab=Instance.new"Highlight"
+ab.FillTransparency=0.5
+ab.OutlineTransparency=0
+ab.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+local ac=pcall(function()ab.Parent=gethui()end)
+if not ac then
+pcall(function()ab.Parent=game:GetService"CoreGui"end)
 end
-R.Chams=aa
+U.Chams=ab
 end
-aa.Adornee=Q.Character
-aa.FillColor=n.ChamsFillColor
-aa.OutlineColor=n.ChamsOutlineColor
-aa.Enabled=true
+ab.Adornee=T.Character
+ab.FillColor=o.ChamsFillColor
+ab.OutlineColor=o.ChamsOutlineColor
+ab.Enabled=true
 else
-if R.Chams then R.Chams.Enabled=false end
+if U.Chams then U.Chams.Enabled=false end
 end
 end
 end
 end
 end
 
-if not S then
-hideObject(R)
+if not V then
+hideObject(U)
 end
 end
+
 end
 
 local function bindPlayer(aa,ab)
 if aa==c then return end
-if not v or ab~=w then return end
-if x[aa]then return end
+if not w or ab~=x then return end
+if y[aa]then return end
 
 local ac=createObject()
-x[aa]=ac
+y[aa]=ac
 
-y[aa]=aa.CharacterAdded:Connect(function(ad)
-if not v or ab~=w then return end
+z[aa]=aa.CharacterAdded:Connect(function(ad)
+if not w or ab~=x then return end
 task.defer(function()
 task.wait(0.3)
-if not v or ab~=w then return end
-if not x[aa]then return end
+if not w or ab~=x then return end
+if not y[aa]then return end
 ac.Parts=cacheParts(ad)
 end)
 end)
@@ -390,99 +550,103 @@ end)
 if aa.Character then
 task.defer(function()
 task.wait(0.3)
-if not v or ab~=w then return end
-if not x[aa]then return end
+if not w or ab~=x then return end
+if not y[aa]then return end
 ac.Parts=cacheParts(aa.Character)
 end)
 end
 end
 
 local function startInternal()
-if v then return end
-v=true
-w=w+1
-local aa=w
+if w then return end
+w=true
+x=x+1
+local aa=x
 
-x={}
 y={}
 z={}
+A={}
 
 for ab,ac in ipairs(a:GetPlayers())do
 bindPlayer(ac,aa)
 end
 
-z[#z+1]=a.PlayerAdded:Connect(function(ab)
-if v and aa==w then bindPlayer(ab,aa)end
+A[#A+1]=a.PlayerAdded:Connect(function(ab)
+if w and aa==x then bindPlayer(ab,aa)end
 end)
 
-z[#z+1]=a.PlayerRemoving:Connect(function(ab)
-if not v or aa~=w then return end
-safeDisconnect(y[ab]);y[ab]=nil
-local ac=x[ab]
+A[#A+1]=a.PlayerRemoving:Connect(function(ab)
+if not w or aa~=x then return end
+safeDisconnect(z[ab]);z[ab]=nil
+local ac=y[ab]
 if ac then destroyObject(ac)end
-x[ab]=nil
+y[ab]=nil
 end)
 
-z[#z+1]=b.RenderStepped:Connect(renderFrame)
+A[#A+1]=b.RenderStepped:Connect(renderFrame)
 end
 
 local function stopInternal()
-if not v then return end
-v=false
-w=w+1
+if not w then return end
+w=false
+x=x+1
+C=nil
 
-for aa=1,#z do safeDisconnect(z[aa])end
+for aa=1,#A do safeDisconnect(A[aa])end
+A={}
+
+for aa,ab in next,z do safeDisconnect(ab)end
 z={}
 
-for aa,ab in next,y do safeDisconnect(ab)end
+local aa={}
+for ab in next,y do aa[#aa+1]=ab end
+for ab=1,#aa do
+local ac=y[aa[ab] ]
+if ac then destroyObject(ac)end
+y[aa[ab] ]=nil
+end
 y={}
 
-local aa={}
-for ab in next,x do aa[#aa+1]=ab end
-for ab=1,#aa do
-local ac=x[aa[ab] ]
-if ac then destroyObject(ac)end
-x[aa[ab] ]=nil
-end
-x={}
+destroyFOVCircle()
 end
 
 local function anyFlagOn()
-for aa,ab in ipairs(k)do
-if m[ab]then return true end
+for aa,ab in ipairs(l)do
+if n[ab]then return true end
 end
 return false
 end
 
 local function autoManage()
 local aa=anyFlagOn()
-if aa and not v then
+if aa and not w then
 startInternal()
-elseif not aa and v then
+elseif not aa and w then
 stopInternal()
 end
 end
 
 local aa=setmetatable({},{
 __newindex=function(aa,ab,ac)
-if l[ab]then
-m[ab]=ac
+if m[ab]then
+n[ab]=ac
 autoManage()
 else
-n[ab]=ac
+o[ab]=ac
 end
 end,
 __index=function(aa,ab)
-if l[ab]then
-return m[ab]
-end
+if m[ab]then
 return n[ab]
+end
+return o[ab]
 end,
 })
 
 _G.__ESP_CLEANUP=function()
 stopInternal()
 end
+
 if anyFlagOn()then
 startInternal()
 end
